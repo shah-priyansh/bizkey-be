@@ -10,21 +10,11 @@ const createClient = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, company, email, phone, address, area, salesman, status, notes } = req.body;
+    const { name, company, email, phone, address, area, status, notes } = req.body;
 
     const areaExists = await Area.findById(area);
     if (!areaExists) {
       return res.status(400).json({ message: 'Area not found' });
-    }
-
-    // Validate salesman exists and is assigned to the area
-    const salesmanExists = await User.findById(salesman);
-    if (!salesmanExists || salesmanExists.role !== 'salesman' || !salesmanExists.isActive) {
-      return res.status(400).json({ message: 'Invalid salesman' });
-    }
-
-    if (salesmanExists.area.toString() !== area) {
-      return res.status(400).json({ message: 'Salesman is not assigned to this area' });
     }
 
     const client = new Client({
@@ -34,7 +24,6 @@ const createClient = async (req, res) => {
       phone,
       address,
       area,
-      salesman,
       notes,
     });
 
@@ -42,7 +31,6 @@ const createClient = async (req, res) => {
 
     const clientResponse = await Client.findById(client._id)
       .populate('area', 'name city state')
-      .populate('salesman', 'firstName lastName email phone')
 
     res.status(201).json(clientResponse);
   } catch (error) {

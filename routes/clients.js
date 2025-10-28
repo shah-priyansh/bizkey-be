@@ -19,7 +19,6 @@ router.post('/', [
   body('name').notEmpty().withMessage('Client name is required'),
   body('phone').notEmpty().withMessage('Phone number is required'),
   body('area').notEmpty().withMessage('Area is required'),
-  body('salesman').notEmpty().withMessage('Salesman is required'),
   body('email').optional().isEmail().withMessage('Valid email is required'),
   body('company').optional().trim(),
   body('address.street').optional().trim(),
