@@ -1,22 +1,23 @@
 const express = require('express');
-const { adminAuth } = require('../middleware/auth');
+const { adminAuth, auth } = require('../middleware/auth');
 const areaController = require('../controllers/area');
 const areaValidation = require('../validations/area');
 
 const router = express.Router();
 
-router.use(adminAuth);
+// GET /areas - Allow both admin and salesman access
+router.get('/', 
+  auth,
+  areaValidation.getAreasValidation,
+  areaController.getAllAreas
+);
 
+// All other routes require admin access
+router.use(adminAuth);
 
 router.post('/', 
   areaValidation.createAreaValidation,
   areaController.createArea
-);
-
-
-router.get('/', 
-  areaValidation.getAreasValidation,
-  areaController.getAllAreas
 );
 
 router.put('/:id', 
@@ -28,6 +29,7 @@ router.patch('/:id/toggle-status',
   areaValidation.toggleStatusValidation,
   areaController.toggleAreaStatus
 );
+
 router.delete('/:id', 
   areaValidation.areaIdValidation,
   areaController.deleteArea

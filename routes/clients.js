@@ -10,7 +10,7 @@ const {
   assignSalesman,
   toggleClientStatus,
   getSalesmenByCity,
-  getSalesmanArea
+  getAreasBySalesmanCity
 } = require('../controllers/client');
 
 const router = express.Router();
@@ -47,4 +47,7 @@ router.post('/:id/assign-salesman', [
 ], assignSalesman);
 
 router.patch('/:id/toggle-status', adminAuth, toggleClientStatus);
+
+router.get('/salesman/areas', auth, getAreasBySalesmanCity);
+
 module.exports = router;

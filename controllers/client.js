@@ -46,18 +46,35 @@ const getClients = async (req, res) => {
     let query = {  };
     
     if (req.user?.role === 'salesman') {
-      query.salesman = req.user._id;
-      query.isActive = true;
-      
+      // For salesmen, we need to check if they can access the requested area
       if (area) {
-        if (req.user.area.toString() !== area) {
+        // Get salesman's area info
+        const user = await User.findById(req.user._id).populate('area', 'city');
+        
+        if (!user || !user.area) {
+          return res.status(404).json({ message: 'No area assigned to this salesman' });
+        }
+
+        // Check if the requested area is in the same city as salesman's area
+        const requestedArea = await Area.findById(area);
+        if (!requestedArea) {
+          return res.status(404).json({ message: 'Area not found' });
+        }
+
+        if (requestedArea.city !== user.area.city) {
           return res.status(403).json({ 
-            message: 'You are not assigned to this area',
-            error: 'AREA_ACCESS_DENIED'
+            message: 'You can only access areas in your assigned city',
+            error: 'CITY_ACCESS_DENIED'
           });
         }
+
         query.area = area;
+      } else {
+        // If no area specified, show clients from salesman's assigned area
+        query.area = req.user.area;
       }
+      
+      query.isActive = true;
     } else if (area) {
       query.area = area;
     }
@@ -272,23 +289,35 @@ const getSalesmenByCity = async (req, res) => {
   }
 };
 
-const getSalesmanArea = async (req, res) => {
+const getAreasBySalesmanCity = async (req, res) => {
   try {
     if (req.user.role !== 'salesman') {
       return res.status(403).json({ message: 'Access denied. Salesman role required.' });
     }
 
-    const user = await User.findById(req.user._id).populate('area', 'name city state');
+    const user = await User.findById(req.user._id).populate('area', 'city');
     
     if (!user || !user.area) {
       return res.status(404).json({ message: 'No area assigned to this salesman' });
     }
 
+    // Get all areas in the same city as the salesman's area
+    const areas = await Area.find({ 
+      city: user.area.city,
+      isActive: true 
+    }).select('name city state');
+
     res.json({
-      area: user.area
+      areas,
+      salesmanArea: {
+        _id: user.area._id,
+        name: user.area.name,
+        city: user.area.city,
+        state: user.area.state
+      }
     });
   } catch (error) {
-    console.error('Get salesman area error:', error);
+    console.error('Get areas by salesman city error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -302,5 +331,5 @@ module.exports = {
   assignSalesman,
   toggleClientStatus,
   getSalesmenByCity,
-  getSalesmanArea
+  getAreasBySalesmanCity
 };

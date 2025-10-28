@@ -1,4 +1,5 @@
 const Area = require('../models/Area');
+const User = require('../models/User');
 
 
 const createArea = async (req, res) => {
@@ -57,6 +58,22 @@ const getAllAreas = async (req, res) => {
     
     let query = {};
     
+    // If user is a salesman, only show areas from their city
+    if (req.user?.role === 'salesman') {
+      // Get salesman's area information
+      const user = await User.findById(req.user._id).populate('area', 'city');
+      
+      if (!user || !user.area) {
+        return res.status(404).json({
+          success: false,
+          message: 'No area assigned to this salesman'
+        });
+      }
+      
+      // Filter by salesman's city
+      query.city = user.area.city;
+    }
+    
     // Search filter
     if (search) {
       query.$or = [
@@ -66,8 +83,8 @@ const getAllAreas = async (req, res) => {
       ];
     }
     
-    // City filter
-    if (city) {
+    // City filter (only for admins, salesmen are already filtered by their city)
+    if (city && req.user?.role !== 'salesman') {
       query.city = { $regex: city, $options: 'i' };
     }
     
