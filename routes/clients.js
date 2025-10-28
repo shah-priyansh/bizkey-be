@@ -8,7 +8,9 @@ const {
   updateClient,
   deleteClient,
   assignSalesman,
-  toggleClientStatus
+  toggleClientStatus,
+  getSalesmenByCity,
+  getSalesmanArea
 } = require('../controllers/client');
 
 const router = express.Router();
@@ -17,6 +19,7 @@ router.post('/', [
   body('name').notEmpty().withMessage('Client name is required'),
   body('phone').notEmpty().withMessage('Phone number is required'),
   body('area').notEmpty().withMessage('Area is required'),
+  body('salesman').notEmpty().withMessage('Salesman is required'),
   body('email').optional().isEmail().withMessage('Valid email is required'),
   body('company').optional().trim(),
   body('address.street').optional().trim(),
@@ -45,5 +48,4 @@ router.post('/:id/assign-salesman', [
 ], assignSalesman);
 
 router.patch('/:id/toggle-status', adminAuth, toggleClientStatus);
-
 module.exports = router;

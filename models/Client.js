@@ -35,6 +35,11 @@ const clientSchema = new mongoose.Schema({
     ref: 'Area',
     required: true
   },
+  salesman: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   status: {
     type: String,
     enum: ['active', 'inactive'],
@@ -54,6 +59,7 @@ const clientSchema = new mongoose.Schema({
 
 // Index for efficient queries
 clientSchema.index({ area: 1, status: 1 });
+clientSchema.index({ salesman: 1, status: 1 });
 clientSchema.index({ name: 1, company: 1 });
 
 module.exports = mongoose.model('Client', clientSchema);

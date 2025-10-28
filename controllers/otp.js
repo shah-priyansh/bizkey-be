@@ -2,16 +2,15 @@ const { validationResult } = require('express-validator');
 const Otp = require('../models/Otp');
 const Client = require('../models/Client');
 const whatsappService = require('../services/whatsappService');
-const smsService = require('../services/smsService');
 
 const sendOTP = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
@@ -47,27 +46,47 @@ const sendOTP = async (req, res) => {
 
     await otp.save();
 
-    // TODO: Uncomment the following lines to actually send OTP via WhatsApp/SMS
-    // const whatsappResult = await whatsappService.sendOTP(
-    //   client.phone,
-    //   otpCode,
-    //   client.name
-    // );
+    // Send OTP via WhatsApp
+    const whatsappResult = await whatsappService.sendOTP(
+      client.phone,
+      otpCode,
+      client.name
+    );
 
-    // For now, return OTP directly in response for development
-    res.json({
-      success: true,
-      message: 'OTP sent successfully',
-      data: {
-        clientId: client._id,
-        clientName: client.name,
-        phone: client.phone,
-        otp: otpCode, // Direct OTP return for development - REMOVE IN PRODUCTION
-        expiresIn: '5 minutes',
-        expiresAt: otp.expiresAt,
-        deliveryMethod: 'Development Mode'
-      }
-    });
+    if (whatsappResult.success) {
+      console.log(`WhatsApp OTP sent successfully to ${client.name} (${client.phone}): ${otpCode}`);
+
+      res.json({
+        success: true,
+        message: 'OTP sent successfully via WhatsApp',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp',
+          messageSid: whatsappResult.messageSid
+        }
+      });
+    } else {
+      console.error(`WhatsApp OTP send failed for ${client.name} (${client.phone}):`, whatsappResult.error);
+
+      res.json({
+        success: true,
+        message: 'OTP generated successfully (WhatsApp delivery failed)',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp (Failed)',
+          otp: otpCode, // Include OTP in response for fallback
+          whatsappError: whatsappResult.error
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -82,10 +101,10 @@ const verifyOTP = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
@@ -106,7 +125,7 @@ const verifyOTP = async (req, res) => {
 
     if (!otpRecord.isValid()) {
       otpRecord.isUsed = true;
-      await otpRecord.save();   
+      await otpRecord.save();
 
       return res.status(400).json({
         success: false,
@@ -118,7 +137,7 @@ const verifyOTP = async (req, res) => {
 
     if (otpRecord.otp !== otp) {
       await otpRecord.save();
-      
+
       return res.status(400).json({
         success: false,
         message: 'Invalid OTP',
@@ -155,10 +174,10 @@ const resendOTP = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
@@ -212,7 +231,7 @@ const resendOTP = async (req, res) => {
 
     await otp.save();
 
-      
+
     const whatsappResult = await whatsappService.sendOTP(
       client.phone,
       otpCode,
@@ -221,7 +240,7 @@ const resendOTP = async (req, res) => {
 
     if (whatsappResult.success) {
       console.log(`WhatsApp OTP resent successfully to ${client.name} (${client.phone}): ${otpCode}`);
-      
+
       res.json({
         success: true,
         message: 'OTP resent successfully via WhatsApp',
@@ -236,7 +255,7 @@ const resendOTP = async (req, res) => {
       });
     } else {
       console.error(`WhatsApp OTP resend failed for ${client.name} (${client.phone}):`, whatsappResult.error);
-      
+
       res.json({
         success: true,
         message: 'OTP regenerated successfully (WhatsApp delivery failed)',

@@ -1,141 +1,191 @@
-const twilio = require('twilio');
+const axios = require('axios');
+const dotenv = require('dotenv');
+dotenv.config();
 
 class WhatsAppService {
   constructor() {
-    this.client = twilio(
-      process.env.TWILIO_ACCOUNT_SID, // Your Account SID
-      process.env.TWILIO_AUTH_TOKEN // Your Auth Token
-    );
-
-    this.whatsappFrom = 'whatsapp:+14155238886'; // Twilio sandbox number
-  }
-  async sendOTP(to, otp, clientName = 'Valued Customer') {
-    try {
-      const whatsappTo = this.formatPhoneNumber(to);
-
-      const message = this.createOTPMessage(otp, clientName);
-      console.log(message);
-
-      const response = await this.client.messages.create({
-        body: message,
-        from: this.whatsappFrom,
-        to: whatsappTo
-      });
-
-      console.log(`WhatsApp OTP sent successfully:`, {
-        messageSid: response.sid,
-        to: whatsappTo,
-        clientName: clientName
-      });
-
-      return {
-        success: true,
-        messageSid: response.sid,
-        status: response.status
-      };
-
-    } catch (error) {
-      console.error('WhatsApp OTP send error:', error);
-
-      return {
-        success: false,
-        error: error.message,
-        code: error.code
-      };
+    // Ensure environment variables are loaded
+    if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) {
+      console.error('WhatsApp environment variables not found. Please check your .env file.');
     }
+
+    this.apiUrl = process.env.WHATSAPP_URL || 'https://graph.facebook.com/v22.0';
+    this.token = process.env.WHATSAPP_TOKEN;
+    this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   }
 
   /**
-   * Format phone number for WhatsApp
+   * Generate random 6-digit OTP
+   * @returns {string} - 6-digit OTP
+   */
+  generateOTP() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  /**
+   * Format phone number to E.164 format
    * @param {string} phone - Phone number
-   * @returns {string} - Formatted WhatsApp number
+   * @returns {string} - Formatted phone number
    */
   formatPhoneNumber(phone) {
+    // Remove all non-digit characters
     let cleanPhone = phone.replace(/\D/g, '');
 
+    // If number is 10 digits, add India country code (91)
     if (cleanPhone.length === 10) {
       cleanPhone = '91' + cleanPhone;
     }
 
-    // Add WhatsApp prefix
-    return `whatsapp:+${cleanPhone}`;
+    return cleanPhone;
   }
 
   /**
-   * Create OTP message template
+   * Send OTP via WhatsApp Business API
+   * @param {string} to - Recipient phone number (without +)
    * @param {string} otp - 6-digit OTP
    * @param {string} clientName - Client name
-   * @returns {string} - Formatted message
+   * @returns {Promise<Object>} - Response object
    */
-  createOTPMessage(otp, clientName) {
-    return `🔐 *OTP Verification*
+  async sendOTP(to, otp, clientName = 'Valued Customer') {
+    try {
+      this.token = process.env.WHATSAPP_TOKEN;
+      this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-Hello ${clientName}! 👋
+      if (!this.token || !this.phoneNumberId) {
+        throw new Error('WhatsApp credentials not configured. Please set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID');
+      }
 
-Your OTP for verification is: *${otp}*
+      const formattedPhone = this.formatPhoneNumber(to);
+      const templateName = process.env.WHATSAPP_TEMPLATE_NAME || 'auth_template';
 
-⏰ This OTP is valid for 5 minutes only.
 
-🚫 Please do not share this OTP with anyone.
+      const requestPayload = {
+        messaging_product: 'whatsapp',
+        to: formattedPhone,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en_US' },
+          components: [
+            {
+              type: 'body',
+              parameters: [{ type: 'text', text: otp }]
+            },
+            {
+              type: 'button',
+              sub_type: 'url',
+              index: '0',
+              parameters: [
+                { type: 'text', text: otp }
+              ]
+            }
+          ]
+        }
+      };
 
-Thank you for choosing our services! 🙏
 
----
-*This is an automated message. Please do not reply.*`;
+      console.log('WhatsApp API Request:', JSON.stringify(requestPayload, null, 2));
+
+      const response = await axios.post(
+        `${this.apiUrl}/${this.phoneNumberId}/messages`,
+        requestPayload,
+        {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return {
+        success: true,
+        messageSid: response.data.messages[0]?.id,
+        status: 'sent',
+        phoneNumber: formattedPhone,
+      };
+    } catch (error) {
+      console.error('WhatsApp API Error:', error.response?.data || error.message);
+
+      return {
+        success: false,
+        error: error.response?.data || error.message,
+        code: error.response?.status,
+      };
+    }
   }
 
   /**
    * Send custom WhatsApp message
-   * @param {string} to - Recipient's phone number
+   * @param {string} to - Recipient phone number
    * @param {string} message - Custom message
-   * @returns {Promise<Object>} - Twilio response
+   * @returns {Promise<Object>} - Response object
    */
   async sendCustomMessage(to, message) {
     try {
-      const whatsappTo = this.formatPhoneNumber(to);
+      if (!this.token || !this.phoneNumberId) {
+        throw new Error('WhatsApp credentials not configured');
+      }
 
-      const response = await this.client.messages.create({
-        body: message,
-        from: this.whatsappFrom,
-        to: whatsappTo
-      });
+      const formattedPhone = this.formatPhoneNumber(to);
+
+      const response = await axios.post(
+        `${this.apiUrl}/${this.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          to: formattedPhone,
+          type: 'text',
+          text: {
+            body: message,
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
       return {
         success: true,
-        messageSid: response.sid,
-        status: response.status
+        messageSid: response.data.messages[0]?.id,
+        status: 'sent',
       };
-
     } catch (error) {
       console.error('WhatsApp custom message error:', error);
       return {
         success: false,
-        error: error.message
+        error: error.response?.data || error.message,
       };
     }
   }
 
   /**
    * Check WhatsApp message status
-   * @param {string} messageSid - Twilio message SID
+   * @param {string} messageId - WhatsApp message ID
    * @returns {Promise<Object>} - Message status
    */
-  async getMessageStatus(messageSid) {
+  async getMessageStatus(messageId) {
     try {
-      const message = await this.client.messages(messageSid).fetch();
+      const response = await axios.get(
+        `${this.apiUrl}/${messageId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+          },
+        }
+      );
 
       return {
         success: true,
-        status: message.status,
-        dateCreated: message.dateCreated,
-        dateUpdated: message.dateUpdated
+        status: response.data.status,
+        data: response.data,
       };
-
     } catch (error) {
       console.error('WhatsApp message status error:', error);
       return {
         success: false,
-        error: error.message
+        error: error.response?.data || error.message,
       };
     }
   }

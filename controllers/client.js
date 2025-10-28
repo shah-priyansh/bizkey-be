@@ -10,11 +10,21 @@ const createClient = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, company, email, phone, address, area, status, notes } = req.body;
+    const { name, company, email, phone, address, area, salesman, status, notes } = req.body;
 
     const areaExists = await Area.findById(area);
     if (!areaExists) {
       return res.status(400).json({ message: 'Area not found' });
+    }
+
+    // Validate salesman exists and is assigned to the area
+    const salesmanExists = await User.findById(salesman);
+    if (!salesmanExists || salesmanExists.role !== 'salesman' || !salesmanExists.isActive) {
+      return res.status(400).json({ message: 'Invalid salesman' });
+    }
+
+    if (salesmanExists.area.toString() !== area) {
+      return res.status(400).json({ message: 'Salesman is not assigned to this area' });
     }
 
     const client = new Client({
@@ -24,6 +34,7 @@ const createClient = async (req, res) => {
       phone,
       address,
       area,
+      salesman,
       notes,
     });
 
@@ -31,6 +42,7 @@ const createClient = async (req, res) => {
 
     const clientResponse = await Client.findById(client._id)
       .populate('area', 'name city state')
+      .populate('salesman', 'firstName lastName email phone')
 
     res.status(201).json(clientResponse);
   } catch (error) {
@@ -46,8 +58,18 @@ const getClients = async (req, res) => {
     let query = {  };
     
     if (req.user?.role === 'salesman') {
-      query.area = req.user.area;
+      query.salesman = req.user._id;
       query.isActive = true;
+      
+      if (area) {
+        if (req.user.area.toString() !== area) {
+          return res.status(403).json({ 
+            message: 'You are not assigned to this area',
+            error: 'AREA_ACCESS_DENIED'
+          });
+        }
+        query.area = area;
+      }
     } else if (area) {
       query.area = area;
     }
@@ -64,6 +86,7 @@ const getClients = async (req, res) => {
 
     const clients = await Client.find(query)
       .populate('area', 'name city state')
+      .populate('salesman', 'firstName lastName email phone')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -74,7 +97,15 @@ const getClients = async (req, res) => {
       clients,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
-      total
+      total,
+      ...(req.user?.role === 'salesman' && {
+        salesmanArea: {
+          _id: req.user.area._id,
+          name: req.user.area.name,
+          city: req.user.area.city,
+          state: req.user.area.state
+        }
+      })
     });
   } catch (error) {
     console.error('Get clients error:', error);
@@ -89,11 +120,12 @@ const getClientById = async (req, res) => {
     let query = { _id: id, isActive: true };
     
     if (req.user.role === 'salesman') {
-      query.area = req.user.area;
+      query.salesman = req.user._id;
     }
 
     const client = await Client.findOne(query)
       .populate('area', 'name city state')
+      .populate('salesman', 'firstName lastName email phone')
 
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });
@@ -226,6 +258,53 @@ const toggleClientStatus = async (req, res) => {
   }
 };
 
+const getSalesmenByCity = async (req, res) => {
+  try {
+    const { city } = req.query;
+    
+    if (!city) {
+      return res.status(400).json({ message: 'City parameter is required' });
+    }
+
+    // Find areas in the specified city
+    const areas = await Area.find({ city: city, isActive: true });
+    const areaIds = areas.map(area => area._id);
+
+    // Find salesmen assigned to areas in this city
+    const salesmen = await User.find({
+      role: 'salesman',
+      area: { $in: areaIds },
+      isActive: true
+    }).select('firstName lastName email phone area').populate('area', 'name city state');
+
+    res.json(salesmen);
+  } catch (error) {
+    console.error('Get salesmen by city error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const getSalesmanArea = async (req, res) => {
+  try {
+    if (req.user.role !== 'salesman') {
+      return res.status(403).json({ message: 'Access denied. Salesman role required.' });
+    }
+
+    const user = await User.findById(req.user._id).populate('area', 'name city state');
+    
+    if (!user || !user.area) {
+      return res.status(404).json({ message: 'No area assigned to this salesman' });
+    }
+
+    res.json({
+      area: user.area
+    });
+  } catch (error) {
+    console.error('Get salesman area error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createClient,
   getClients,
@@ -233,5 +312,7 @@ module.exports = {
   updateClient,
   deleteClient,
   assignSalesman,
-  toggleClientStatus
+  toggleClientStatus,
+  getSalesmenByCity,
+  getSalesmanArea
 };
