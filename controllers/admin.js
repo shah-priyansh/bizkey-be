@@ -22,21 +22,173 @@ const getDashboard = async (req, res) => {
     const totalSalesmen = await User.countDocuments({ role: 'salesman', isActive: true });
     const totalClients = await Client.countDocuments({ isActive: true });
     const totalAreas = await Area.countDocuments({ isActive: true });
-    const totalInquiries = await ClientFeedback.countDocuments();
+    const totalInquiries = await ClientFeedback.countDocuments({ isActive: true });
 
-    const recentSalesmen = await User.find({ role: 'salesman' })
-      .select('firstName lastName email area lastLogin phone createdAt')
-      .populate('area', 'name city')
-      .sort({ createdAt: -1 })
-      .limit(5);
+    // Get period parameter (default to 'month')
+    const period = req.query.period || 'month';
+    
+    // Calculate date range based on period
+    const now = new Date();
+    let startDate = new Date();
+    let groupByFormat = {};
+    let limitCount = 0;
+    let formatLabel = (item) => '';
 
-    const recentClients = await Client.find()
-      .select('name company area status createdAt phone')
-      .populate('area', 'name city')
-      .sort({ createdAt: -1 })
-      .limit(5);
+    switch (period) {
+      case 'day':
+        // Last 30 days
+        startDate.setDate(now.getDate() - 30);
+        groupByFormat = {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' },
+          day: { $dayOfMonth: '$createdAt' }
+        };
+        limitCount = 30;
+        formatLabel = (item) => {
+          const date = new Date(item._id.year, item._id.month - 1, item._id.day);
+          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+        break;
+      case 'week':
+        // Last 12 weeks
+        startDate.setDate(now.getDate() - 84); // 12 weeks
+        groupByFormat = {
+          year: { $year: '$createdAt' },
+          week: { $week: '$createdAt' }
+        };
+        limitCount = 12;
+        // We'll handle week formatting later to ensure consecutive weeks
+        formatLabel = null; // Will be handled after aggregation
+        break;
+      case 'month':
+      default:
+        // Last 12 months
+        startDate.setMonth(now.getMonth() - 12);
+        groupByFormat = {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' }
+        };
+        limitCount = 12;
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        formatLabel = (item) => `${monthNames[item._id.month - 1]} ${item._id.year}`;
+        break;
+    }
 
-    const recentInquiries = await ClientFeedback.find()
+    // Get chart data for inquiries based on period
+    const inquiriesChartData = await ClientFeedback.aggregate([
+      {
+        $match: {
+          isActive: true,
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: groupByFormat,
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: period === 'day' 
+          ? { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+          : period === 'week'
+          ? { '_id.year': 1, '_id.week': 1 }
+          : { '_id.year': 1, '_id.month': 1 }
+      },
+      {
+        $limit: limitCount
+      }
+    ]);
+
+    // Get chart data for clients - last 12 months
+    const clientsChartData = await Client.aggregate([
+      {
+        $match: {
+          isActive: true
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 }
+      },
+      {
+        $limit: 12
+      }
+    ]);
+
+    // Format chart data
+    const formatChartData = (data, formatter, periodType = null) => {
+      if (periodType === 'week') {
+        // Create a map of existing data indexed by year-week
+        const weekData = new Map();
+        data.forEach(item => {
+          const key = `${item._id.year}-${item._id.week}`;
+          weekData.set(key, item.count);
+        });
+        
+        // Generate last 12 consecutive weeks (going backwards from today)
+        const result = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        for (let i = 11; i >= 0; i--) {
+          // Calculate the start of each week (Monday)
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - (i * 7));
+          // Move to Monday of that week
+          const dayOfWeek = weekStart.getDay();
+          const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          weekStart.setDate(weekStart.getDate() - daysFromMonday);
+          
+          const year = weekStart.getFullYear();
+          // Get ISO week number
+          const weekNum = getISOWeek(weekStart);
+          const key = `${year}-${weekNum}`;
+          
+          // Get start date of week for label
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' });
+          const startDay = weekStart.getDate();
+          const endMonth = weekEnd.toLocaleDateString('en-US', { month: 'short' });
+          const endDay = weekEnd.getDate();
+          
+          result.push({
+            name: weekStart.getMonth() === weekEnd.getMonth() 
+              ? `${startMonth} ${startDay}-${endDay}` 
+              : `${startMonth} ${startDay} - ${endMonth} ${endDay}`,
+            value: weekData.get(key) || 0
+          });
+        }
+        return result;
+      }
+      
+      return data.map(item => ({
+        name: formatter(item),
+        value: item.count
+      }));
+    };
+    
+    // Helper function to get ISO week number
+    const getISOWeek = (date) => {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    };
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const recentInquiries = await ClientFeedback.find({ isActive: true })
       .select('client lead products audio notes createdBy createdAt')
       .populate('client', 'name company phone')
       .populate('createdBy', 'firstName lastName')
@@ -51,8 +203,20 @@ const getDashboard = async (req, res) => {
         totalAreas,
         totalInquiries
       },
-      recentSalesmen,
-      recentClients,
+      chartData: {
+        inquiries: formatChartData(inquiriesChartData, formatLabel || ((item) => {
+          if (period === 'week') return item.name; // Already formatted
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          if (period === 'day') {
+            const date = new Date(item._id.year, item._id.month - 1, item._id.day);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          }
+          return `${monthNames[item._id.month - 1]} ${item._id.year}`;
+        }), period === 'week' ? 'week' : null),
+        clients: formatChartData(clientsChartData, (item) => {
+          return `${monthNames[item._id.month - 1]} ${item._id.year}`;
+        })
+      },
       recentInquiries
     });
   } catch (error) {
