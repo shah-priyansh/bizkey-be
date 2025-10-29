@@ -18,7 +18,7 @@ const login = async (req, res) => {
         // Find user by username or email   
         const user = await User.findOne({
             email: username
-        }).populate('area', 'name city state');
+        }).populate('area');
 
         if (!user || !user.isActive) {
             return res.status(400).json({ message: 'Invalid credentials or user inactive' });
