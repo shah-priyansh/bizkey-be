@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const Otp = require('../models/Otp');
 const Client = require('../models/Client');
+const Notification = require('../models/Notification');
 const whatsappService = require('../services/whatsappService');
 
 const sendOTP = async (req, res) => {
@@ -52,6 +53,23 @@ const sendOTP = async (req, res) => {
       otpCode,
       client.name
     );
+
+    // Create notification/audit log
+    if (req.user) {
+      const notification = new Notification({
+        type: 'otp_sent',
+        salesman: req.user._id,
+        client: client._id,
+        clientName: client.name,
+        clientPhone: client.phone,
+        salesmanName: `${req.user.firstName} ${req.user.lastName}`,
+        message: `OTP sent to ${client.name} (${client.phone})`,
+        status: whatsappResult.success ? 'success' : 'failed',
+        otpId: otp._id,
+        deliveryMethod: whatsappResult.success ? 'WhatsApp' : 'WhatsApp (Failed)'
+      });
+      await notification.save();
+    }
 
     if (whatsappResult.success) {
       console.log(`WhatsApp OTP sent successfully to ${client.name} (${client.phone}): ${otpCode}`);
@@ -237,6 +255,23 @@ const resendOTP = async (req, res) => {
       otpCode,
       client.name
     );
+
+    // Create notification/audit log for resend
+    if (req.user) {
+      const notification = new Notification({
+        type: 'otp_resent',
+        salesman: req.user._id,
+        client: client._id,
+        clientName: client.name,
+        clientPhone: client.phone,
+        salesmanName: `${req.user.firstName} ${req.user.lastName}`,
+        message: `OTP resent to ${client.name} (${client.phone})`,
+        status: whatsappResult.success ? 'success' : 'failed',
+        otpId: otp._id,
+        deliveryMethod: whatsappResult.success ? 'WhatsApp' : 'WhatsApp (Failed)'
+      });
+      await notification.save();
+    }
 
     if (whatsappResult.success) {
       console.log(`WhatsApp OTP resent successfully to ${client.name} (${client.phone}): ${otpCode}`);

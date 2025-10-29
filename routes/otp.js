@@ -6,10 +6,11 @@ const {
   resendOTP,
   getOTPStatus
 } = require('../controllers/otp');
+const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.post('/send', [
+router.post('/send', auth, [
   body('clientId')
     .notEmpty()
     .withMessage('Client ID is required')
@@ -32,7 +33,7 @@ router.post('/verify', [
     .withMessage('OTP must contain only numbers')
 ], verifyOTP);
 
-router.post('/resend', [
+router.post('/resend', auth, [
   body('clientId')
     .notEmpty()
     .withMessage('Client ID is required')

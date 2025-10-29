@@ -8,6 +8,7 @@ const citiesRoutes = require('./cities');
 const otpRoutes = require('./otp');
 const feedbackRoutes = require('./feedback');
 const productsRoutes = require('./products');
+const notificationsRoutes = require('./notifications');
 
 const v1Routes = (app) => {
     app.use('/v1/auth', authRoutes);
@@ -20,6 +21,7 @@ const v1Routes = (app) => {
     app.use('/v1/otp', otpRoutes);
     app.use('/v1/feedback', feedbackRoutes);
     app.use('/v1/products', productsRoutes);
+    app.use('/v1/notifications', notificationsRoutes);
 };
 
 module.exports = v1Routes;
