@@ -196,15 +196,25 @@ const createFeedback = async (req, res) => {
 
 const getAllFeedback = async (req, res) => {
   try {
-    const { client, lead, dateFrom, dateTo, page = 1, limit = 20 } = req.query;
+    const { clientId, lead, dateFrom, dateTo, page = 1, limit = 20 } = req.query;
 
     let query = { isActive: true };
 
-    if (req.user?.role === 'salesman') {
+    if (clientId) {
+      // If client ID is provided, filter by that specific client
+      query.client = clientId ;
+      
+      // For salesmen, also verify they have access to this client
+      if (req.user?.role === 'salesman') {
+        const clientExists = await Client.findById(clientId);
+        if (!clientExists || clientExists.area.toString() !== req.user.area.toString()) {
+          return res.status(403).json({ message: 'Access denied to this client' });
+        }
+      }
+    } else if (req.user?.role === 'salesman') {
+      // If no client specified and user is salesman, filter by their area
       const clientIds = await Client.find({ area: req.user.area, isActive: true }).select('_id');
       query.client = { $in: clientIds.map(c => c._id) };
-    } else if (client) {
-      query.client = client;
     }
 
     if (lead) query.lead = lead;
