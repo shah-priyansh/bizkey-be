@@ -10,7 +10,8 @@ const {
   updateFeedback,
   deleteFeedback,
   getFeedbackStats,
-  getFeedbackByClient
+  getFeedbackByClient,
+  exportInquiriesToExcel
 } = require('../controllers/feedback');
 const feedbackValidation = require('../validations/feedback');
 
@@ -19,6 +20,8 @@ router.post('/signed-url', auth, feedbackValidation.generateSignedUrlValidation,
 router.get('/:feedbackId/audio-url', auth, generateAudioPlaybackUrl);
 
 router.post('/', auth, feedbackValidation.createFeedbackValidation, createFeedback);
+
+router.get('/export', auth, exportInquiriesToExcel);
 
 router.get('/', auth, getAllFeedback);
 

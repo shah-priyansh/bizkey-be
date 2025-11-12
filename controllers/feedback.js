@@ -196,21 +196,95 @@ const createFeedback = async (req, res) => {
 
 const getAllFeedback = async (req, res) => {
   try {
-    const { clientId, lead, dateFrom, dateTo, page = 1, limit = 20 } = req.query;
+    const { 
+      clientId, 
+      lead, 
+      dateFrom, 
+      dateTo, 
+      dateRange, // 'today', 'weekly', 'monthly'
+      salesmanId, 
+      areaId,
+      search,
+      page = 1, 
+      limit = 20 
+    } = req.query;
 
     let query = { isActive: true };
 
+    // Build date range query
+    let dateQuery = {};
+    if (dateRange) {
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      switch (dateRange) {
+        case 'today':
+          dateQuery.$gte = startOfDay;
+          dateQuery.$lte = endOfDay;
+          break;
+        case 'weekly':
+          const weekAgo = new Date(startOfDay);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          dateQuery.$gte = weekAgo;
+          dateQuery.$lte = endOfDay;
+          break;
+        case 'monthly':
+          const monthAgo = new Date(startOfDay);
+          monthAgo.setMonth(monthAgo.getMonth() - 1);
+          dateQuery.$gte = monthAgo;
+          dateQuery.$lte = endOfDay;
+          break;
+      }
+    } else if (dateFrom || dateTo) {
+      if (dateFrom) dateQuery.$gte = new Date(dateFrom);
+      if (dateTo) {
+        const endDate = new Date(dateTo);
+        endDate.setHours(23, 59, 59, 999);
+        dateQuery.$lte = endDate;
+      }
+    }
+
+    if (Object.keys(dateQuery).length > 0) {
+      query.date = dateQuery;
+    }
+
     if (clientId) {
-      // If client ID is provided, filter by that specific client
       query.client = clientId;
     }
 
     if (lead) query.lead = lead;
 
-    if (dateFrom || dateTo) {
-      query.date = {};
-      if (dateFrom) query.date.$gte = new Date(dateFrom);
-      if (dateTo) query.date.$lte = new Date(dateTo);
+    if (salesmanId) {
+      query.createdBy = salesmanId;
+    }
+
+    // Build client filter combining area and search
+    const Client = require('../models/Client');
+    let clientQuery = { isActive: true };
+    
+    if (areaId) {
+      clientQuery.area = areaId;
+    }
+    
+    if (search) {
+      clientQuery.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { company: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    if (areaId || search) {
+      const matchingClients = await Client.find(clientQuery).select('_id');
+      if (matchingClients.length > 0) {
+        query.client = { $in: matchingClients.map(c => c._id) };
+      } else {
+        // If no clients match, return empty result
+        query.client = { $in: [] };
+      }
     }
 
     const feedback = await ClientFeedback.find(query)
@@ -434,6 +508,182 @@ const generateAudioPlaybackUrl = async (req, res) => {
   }
 };
 
+// Export inquiries to Excel (CSV format)
+const exportInquiriesToExcel = async (req, res) => {
+  try {
+    const { 
+      clientId, 
+      lead, 
+      dateFrom, 
+      dateTo, 
+      dateRange,
+      salesmanId, 
+      areaId,
+      search
+    } = req.query;
+
+    // Use the same query logic as getAllFeedback
+    let query = { isActive: true };
+
+    // Build date range query
+    let dateQuery = {};
+    if (dateRange) {
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      switch (dateRange) {
+        case 'today':
+          dateQuery.$gte = startOfDay;
+          dateQuery.$lte = endOfDay;
+          break;
+        case 'weekly':
+          const weekAgo = new Date(startOfDay);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          dateQuery.$gte = weekAgo;
+          dateQuery.$lte = endOfDay;
+          break;
+        case 'monthly':
+          const monthAgo = new Date(startOfDay);
+          monthAgo.setMonth(monthAgo.getMonth() - 1);
+          dateQuery.$gte = monthAgo;
+          dateQuery.$lte = endOfDay;
+          break;
+      }
+    } else if (dateFrom || dateTo) {
+      if (dateFrom) dateQuery.$gte = new Date(dateFrom);
+      if (dateTo) {
+        const endDate = new Date(dateTo);
+        endDate.setHours(23, 59, 59, 999);
+        dateQuery.$lte = endDate;
+      }
+    }
+
+    if (Object.keys(dateQuery).length > 0) {
+      query.date = dateQuery;
+    }
+
+    if (clientId) {
+      query.client = clientId;
+    }
+
+    if (lead) query.lead = lead;
+
+    if (salesmanId) {
+      query.createdBy = salesmanId;
+    }
+
+    // Build client filter combining area and search
+    const Client = require('../models/Client');
+    let clientQuery = { isActive: true };
+    
+    if (areaId) {
+      clientQuery.area = areaId;
+    }
+    
+    if (search) {
+      clientQuery.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { company: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    if (areaId || search) {
+      const matchingClients = await Client.find(clientQuery).select('_id');
+      if (matchingClients.length > 0) {
+        query.client = { $in: matchingClients.map(c => c._id) };
+      } else {
+        // If no clients match, return empty result
+        query.client = { $in: [] };
+      }
+    }
+
+    // Fetch all matching feedbacks (no pagination for export)
+    const feedbacks = await ClientFeedback.find(query)
+      .populate({
+        path: 'client',
+        select: 'name company phone area',
+        populate: {
+          path: 'area',
+          select: 'name city state'
+        }
+      })
+      .populate('createdBy', 'firstName lastName email')
+      .populate('products.product', 'productName')
+      .sort({ date: -1, createdAt: -1 });
+
+    // Convert to CSV format
+    const headers = [
+      'Date',
+      'Client Name',
+      'Company',
+      'Phone',
+      'Area',
+      'Lead Status',
+      'Products',
+      'Total Quantity',
+      'Notes',
+      'Created By',
+      'Has Audio'
+    ];
+
+    const rows = feedbacks.map(feedback => {
+      const products = feedback.products && Array.isArray(feedback.products)
+        ? feedback.products.map(p => `${p.product?.productName || 'N/A'} (Qty: ${p.quantity || 0})`).join('; ')
+        : 'No products';
+      
+      const totalQuantity = feedback.products && Array.isArray(feedback.products)
+        ? feedback.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
+        : 0;
+
+      const areaName = feedback.client?.area?.name || 
+                      (feedback.client?.area?.city ? `${feedback.client.area.city}, ${feedback.client.area.state}` : 'N/A');
+
+      return [
+        feedback.date ? new Date(feedback.date).toLocaleDateString() : '',
+        feedback.client?.name || 'N/A',
+        feedback.client?.company || '',
+        feedback.client?.phone || '',
+        areaName,
+        feedback.lead || 'N/A',
+        products,
+        totalQuantity.toString(),
+        (feedback.notes || '').replace(/\n/g, ' ').replace(/,/g, ';'),
+        feedback.createdBy ? `${feedback.createdBy.firstName || ''} ${feedback.createdBy.lastName || ''}`.trim() : 'N/A',
+        feedback.audio?.key ? 'Yes' : 'No'
+      ];
+    });
+
+    // Create CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => {
+        // Escape commas and quotes in cell values
+        const cellStr = String(cell || '');
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }
+        return cellStr;
+      }).join(','))
+    ].join('\n');
+
+    // Set headers for CSV download
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="inquiries_export_${new Date().toISOString().split('T')[0]}.csv"`);
+    
+    // Add BOM for Excel UTF-8 support
+    res.write('\ufeff');
+    res.write(csvContent);
+    res.end();
+  } catch (error) {
+    console.error('Export inquiries error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   generateSignedUrl,
   getSignedUrlForDownload,
@@ -444,5 +694,6 @@ module.exports = {
   getFeedbackById,
   updateFeedback,
   deleteFeedback,
-  getFeedbackStats
+  getFeedbackStats,
+  exportInquiriesToExcel
 };
