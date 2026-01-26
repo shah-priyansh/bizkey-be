@@ -47,12 +47,12 @@ const sendOTP = async (req, res) => {
 
     await otp.save();
 
-    // Skip WhatsApp sending for testing purposes
-    // const whatsappResult = await whatsappService.sendOTP(
-    //   client.phone,
-    //   otpCode,
-    //   client.name
-    // );
+    // Send OTP via WhatsApp
+    const whatsappResult = await whatsappService.sendOTP(
+      client.phone,
+      otpCode,
+      client.name
+    );
 
     // Create notification/audit log
     if (req.user) {
@@ -64,28 +64,47 @@ const sendOTP = async (req, res) => {
         clientPhone: client.phone,
         salesmanName: `${req.user.firstName} ${req.user.lastName}`,
         message: `OTP sent to ${client.name} (${client.phone})`,
-        status: 'success',
+        status: whatsappResult.success ? 'success' : 'failed',
         otpId: otp._id,
-        deliveryMethod: 'Testing Mode (No WhatsApp)'
+        deliveryMethod: whatsappResult.success ? 'WhatsApp' : 'WhatsApp (Failed)'
       });
       await notification.save();
     }
 
-    console.log(`OTP generated for testing: ${client.name} (${client.phone}): ${otpCode}`);
+    if (whatsappResult.success) {
+      console.log(`WhatsApp OTP sent successfully to ${client.name} (${client.phone}): ${otpCode}`);
 
-    res.json({
-      success: true,
-      message: 'OTP generated successfully (Testing mode - WhatsApp disabled)',
-      data: {
-        clientId: client._id,
-        clientName: client.name,
-        phone: client.phone,
-        expiresIn: '5 minutes',
-        expiresAt: otp.expiresAt,
-        deliveryMethod: 'Testing Mode',
-        otp: otpCode // Include OTP in response for testing
-      }
-    });
+      res.json({
+        success: true,
+        message: 'OTP sent successfully via WhatsApp',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp',
+          messageSid: whatsappResult.messageSid
+        }
+      });
+    } else {
+      console.error(`WhatsApp OTP send failed for ${client.name} (${client.phone}):`, whatsappResult.error);
+
+      res.json({
+        success: true,
+        message: 'OTP generated successfully (WhatsApp delivery failed)',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp (Failed)',
+          otp: otpCode, // Include OTP in response for fallback
+          whatsappError: whatsappResult.error
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -230,12 +249,12 @@ const resendOTP = async (req, res) => {
 
     await otp.save();
 
-    // Skip WhatsApp sending for testing purposes
-    // const whatsappResult = await whatsappService.sendOTP(
-    //   client.phone,
-    //   otpCode,
-    //   client.name
-    // );
+    // Send OTP via WhatsApp
+    const whatsappResult = await whatsappService.sendOTP(
+      client.phone,
+      otpCode,
+      client.name
+    );
 
     // Create notification/audit log for resend
     if (req.user) {
@@ -247,28 +266,47 @@ const resendOTP = async (req, res) => {
         clientPhone: client.phone,
         salesmanName: `${req.user.firstName} ${req.user.lastName}`,
         message: `OTP resent to ${client.name} (${client.phone})`,
-        status: 'success',
+        status: whatsappResult.success ? 'success' : 'failed',
         otpId: otp._id,
-        deliveryMethod: 'Testing Mode (No WhatsApp)'
+        deliveryMethod: whatsappResult.success ? 'WhatsApp' : 'WhatsApp (Failed)'
       });
       await notification.save();
     }
 
-    console.log(`OTP regenerated for testing: ${client.name} (${client.phone}): ${otpCode}`);
+    if (whatsappResult.success) {
+      console.log(`WhatsApp OTP resent successfully to ${client.name} (${client.phone}): ${otpCode}`);
 
-    res.json({
-      success: true,
-      message: 'OTP regenerated successfully (Testing mode - WhatsApp disabled)',
-      data: {
-        clientId: client._id,
-        clientName: client.name,
-        phone: client.phone,
-        expiresIn: '5 minutes',
-        expiresAt: otp.expiresAt,
-        deliveryMethod: 'Testing Mode',
-        otp: otpCode // Include OTP in response for testing
-      }
-    });
+      res.json({
+        success: true,
+        message: 'OTP resent successfully via WhatsApp',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp',
+          messageSid: whatsappResult.messageSid
+        }
+      });
+    } else {
+      console.error(`WhatsApp OTP resend failed for ${client.name} (${client.phone}):`, whatsappResult.error);
+
+      res.json({
+        success: true,
+        message: 'OTP regenerated successfully (WhatsApp delivery failed)',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp (Failed)',
+          otp: otpCode, // Include OTP in response for fallback
+          whatsappError: whatsappResult.error
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Resend OTP error:', error);
