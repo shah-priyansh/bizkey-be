@@ -38,9 +38,7 @@ otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Static method to generate 6-digit OTP
 otpSchema.statics.generateOTP = function() {
-  // Static OTP for testing purposes
-  return '123456';
-  // return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 // Method to check if OTP is valid

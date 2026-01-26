@@ -47,6 +47,7 @@ const sendOTP = async (req, res) => {
 
     await otp.save();
 
+    // Send OTP via WhatsApp
     const whatsappResult = await whatsappService.sendOTP(
       client.phone,
       otpCode,
@@ -65,30 +66,45 @@ const sendOTP = async (req, res) => {
         message: `OTP sent to ${client.name} (${client.phone})`,
         status: whatsappResult.success ? 'success' : 'failed',
         otpId: otp._id,
-        deliveryMethod: 'WhatsApp'
+        deliveryMethod: whatsappResult.success ? 'WhatsApp' : 'WhatsApp (Failed)'
       });
       await notification.save();
     }
 
-    if (!whatsappResult.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send OTP via WhatsApp',
-        error: whatsappResult.error
+    if (whatsappResult.success) {
+      console.log(`WhatsApp OTP sent successfully to ${client.name} (${client.phone}): ${otpCode}`);
+
+      res.json({
+        success: true,
+        message: 'OTP sent successfully via WhatsApp',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp',
+          messageSid: whatsappResult.messageSid
+        }
+      });
+    } else {
+      console.error(`WhatsApp OTP send failed for ${client.name} (${client.phone}):`, whatsappResult.error);
+
+      res.json({
+        success: true,
+        message: 'OTP generated successfully (WhatsApp delivery failed)',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp (Failed)',
+          otp: otpCode, // Include OTP in response for fallback
+          whatsappError: whatsappResult.error
+        }
       });
     }
-
-    res.json({
-      success: true,
-      message: 'OTP sent successfully via WhatsApp',
-      data: {
-        clientId: client._id,
-        clientName: client.name,
-        phone: client.phone,
-        expiresIn: '5 minutes',
-        expiresAt: otp.expiresAt
-      }
-    });
 
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -233,6 +249,7 @@ const resendOTP = async (req, res) => {
 
     await otp.save();
 
+    // Send OTP via WhatsApp
     const whatsappResult = await whatsappService.sendOTP(
       client.phone,
       otpCode,
@@ -251,30 +268,45 @@ const resendOTP = async (req, res) => {
         message: `OTP resent to ${client.name} (${client.phone})`,
         status: whatsappResult.success ? 'success' : 'failed',
         otpId: otp._id,
-        deliveryMethod: 'WhatsApp'
+        deliveryMethod: whatsappResult.success ? 'WhatsApp' : 'WhatsApp (Failed)'
       });
       await notification.save();
     }
 
-    if (!whatsappResult.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to resend OTP via WhatsApp',
-        error: whatsappResult.error
+    if (whatsappResult.success) {
+      console.log(`WhatsApp OTP resent successfully to ${client.name} (${client.phone}): ${otpCode}`);
+
+      res.json({
+        success: true,
+        message: 'OTP resent successfully via WhatsApp',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp',
+          messageSid: whatsappResult.messageSid
+        }
+      });
+    } else {
+      console.error(`WhatsApp OTP resend failed for ${client.name} (${client.phone}):`, whatsappResult.error);
+
+      res.json({
+        success: true,
+        message: 'OTP regenerated successfully (WhatsApp delivery failed)',
+        data: {
+          clientId: client._id,
+          clientName: client.name,
+          phone: client.phone,
+          expiresIn: '5 minutes',
+          expiresAt: otp.expiresAt,
+          deliveryMethod: 'WhatsApp (Failed)',
+          otp: otpCode, // Include OTP in response for fallback
+          whatsappError: whatsappResult.error
+        }
       });
     }
-
-    res.json({
-      success: true,
-      message: 'OTP resent successfully via WhatsApp',
-      data: {
-        clientId: client._id,
-        clientName: client.name,
-        phone: client.phone,
-        expiresIn: '5 minutes',
-        expiresAt: otp.expiresAt
-      }
-    });
 
   } catch (error) {
     console.error('Resend OTP error:', error);
