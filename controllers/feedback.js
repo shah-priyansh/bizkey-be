@@ -145,10 +145,6 @@ const createFeedback = async (req, res) => {
       return res.status(400).json({ message: 'Client not found' });
     }
 
-    if (req.user?.role === 'salesman' && clientExists.area.toString() !== req.user.area.toString()) {
-      return res.status(403).json({ message: 'Access denied to this client' });
-    }
-
     // Validate products
     if (!products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ message: 'At least one product is required' });
